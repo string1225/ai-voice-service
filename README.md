@@ -16,6 +16,17 @@ MiniCPM-o 4.5 GGUF 的最小云端实时语音服务。项目保留官方实时 
 | `https://<domain>/api/docs` | Swagger 接口文档 |
 | `https://<domain>/api/health` | 聚合健康检查 |
 
+也支持挂载到已有域名的子路径。当前 Windows GPU + 公网边缘机方案使用：
+
+| 地址 | 用途 |
+| --- | --- |
+| `https://codex.sunny-string.cn/ai-voice/` | 最小文本测试页 |
+| `https://codex.sunny-string.cn/ai-voice/audio_duplex` | 实时语音测试页 |
+| `wss://codex.sunny-string.cn/ai-voice/v1/realtime?mode=audio` | 实时音频 WebSocket |
+| `https://codex.sunny-string.cn/ai-voice/v1/chat/completions` | 文本 REST 接口 |
+| `https://codex.sunny-string.cn/ai-voice/docs` | Swagger 接口文档 |
+| `https://codex.sunny-string.cn/ai-voice/health` | 聚合健康检查 |
+
 ## 服务器要求
 
 - Linux x86_64
@@ -60,6 +71,25 @@ docker compose -f compose.cloud.yml logs -f cpp-worker-backend
 
 Caddy 会根据 `PUBLIC_DOMAIN` 自动申请并续期 TLS 证书。请提前开放 80/443 端口，
 并确保域名 A/AAAA 记录指向服务器。
+
+### Windows GPU 主机 + Linux 公网入口
+
+当公网服务器没有 GPU 时，可让模型继续运行在 Windows GPU 主机，公网服务器只负责
+TLS 和反向代理。复制 `.env.windows.example` 为 `.env.windows`，填写 Python、SSH 密钥
+和 API Key，然后以当前 Windows 用户安装登录自启动任务：
+
+```powershell
+Copy-Item .env.windows.example .env.windows
+notepad .env.windows
+powershell -ExecutionPolicy Bypass -File .\scripts\install-windows-edge-task.ps1
+```
+
+任务会守护本地 Gateway、REST API 和两条仅绑定到公网服务器 loopback 的反向 SSH
+端口。将 `deploy/nginx/ai-voice-location.conf` 安装到公网服务器，并在目标 HTTPS
+`server` 块中 `include` 后执行 `nginx -t && systemctl reload nginx`。
+
+此拓扑下公网 URL 是稳定的，但推理可用性仍取决于 Windows GPU 主机、Docker Desktop
+和出站 SSH 连接。139 服务器本身不执行模型推理。
 
 首次请求会加载模型，文本模式约需 1–2 分钟；首次切换到全双工模式还会重建 duplex
 上下文。服务已将 worker 到 C++ 后端的 WebSocket 冷启动容限设为 300 秒。

@@ -145,7 +145,7 @@ body{font:16px system-ui;max-width:760px;margin:40px auto;padding:0 18px;backgro
 textarea,input,button,pre{box-sizing:border-box;width:100%;margin:8px 0;padding:12px;border-radius:8px}
 textarea,input{background:#1f2937;color:#fff;border:1px solid #4b5563}button{cursor:pointer;background:#2563eb;color:#fff;border:0}
 pre{white-space:pre-wrap;background:#030712;min-height:80px}a{color:#60a5fa}</style></head><body>
-<h1>MiniCPM-o 4.5</h1><p><a href="/audio_duplex">打开实时语音测试页</a> · <a href="docs">Swagger API</a></p>
+<h1>MiniCPM-o 4.5</h1><p><a href="audio_duplex">打开实时语音测试页</a> · <a href="docs">Swagger API</a></p>
 <input id="key" type="password" placeholder="API Key（未配置时留空）"><textarea id="prompt">请只回答：测试</textarea>
 <button onclick="run()">发送文本测试</button><pre id="out">等待请求</pre><script>
 async function run(){const out=document.querySelector('#out'),key=document.querySelector('#key').value;
