@@ -1,0 +1,108 @@
+services:
+  cpp-worker-backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.cpp-worker-backend
+      args:
+        CUDA_VERSION: ${CUDA_VERSION:-12.6.3}
+        CMAKE_CUDA_ARCHITECTURES: ${CMAKE_CUDA_ARCHITECTURES:-86}
+        LLAMA_OMNI_REPO: ${LLAMA_OMNI_REPO:-https://github.com/tc-mb/llama.cpp-omni.git}
+        LLAMA_OMNI_REFSPEC: ${LLAMA_OMNI_REFSPEC:-master}
+        LLAMA_OMNI_REF: ${LLAMA_OMNI_REF:-origin/master}
+    image: ai-voice-service/backend:local
+    environment:
+      GPU_ID: "0"
+      BACKEND_PORT: "22500"
+      WORKER_PORT: "22400"
+      N_GPU_LAYERS: "99"
+      READY_TIMEOUT_S: "1200"
+      GGUF_MODEL: /models/MiniCPM-o-4_5-gguf/${GGUF_MODEL_FILE:-MiniCPM-o-4_5-Q4_K_M.gguf}
+      LLAMA_SERVER_EXTRA_ARGS: "--ctx-size ${LLAMA_CONTEXT_SIZE:-8192}"
+      GATEWAY_REGISTRY_URL: http://gateway:8007/internal/workers
+      WORKER_ID: minicpm-o45-gpu0
+      WORKER_ENDPOINT: cpp-worker-backend:22400
+      WORKER_GPU_GROUP: gpu-${CPP_GPU_ID:-0}
+    volumes:
+      - ${GGUF_MODEL_HOST_PATH:?set GGUF_MODEL_HOST_PATH in .env}:/models/MiniCPM-o-4_5-gguf:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${CPP_GPU_ID:-0}"]
+              capabilities: [gpu]
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:22400/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 120s
+      retries: 40
+    restart: unless-stopped
+    logging: &default-logging
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: "3"
+
+  gateway:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.gateway-lite
+    image: ai-voice-service/gateway:local
+    command: ["--host", "0.0.0.0", "--port", "8006", "--internal-port", "8007", "--http", "--lang", "zh"]
+    expose: ["8006", "8007"]
+    volumes:
+      - ${DATA_HOST_PATH:-./data}:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8006/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 15s
+      retries: 10
+    restart: unless-stopped
+    logging: *default-logging
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    image: ai-voice-service/api:local
+    environment:
+      GATEWAY_HTTP_URL: http://gateway:8006
+      GATEWAY_WS_URL: ws://gateway:8006/v1/realtime
+      CHAT_TIMEOUT_SECONDS: ${CHAT_TIMEOUT_SECONDS:-360}
+      API_KEY: ${API_KEY:-}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
+    expose: ["8080"]
+    depends_on:
+      gateway:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *default-logging
+
+  caddy:
+    image: caddy:2.10-alpine
+    environment:
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_started
+      gateway:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *default-logging
+
+volumes:
+  caddy_data:
+  caddy_config:
